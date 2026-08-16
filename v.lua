@@ -33,6 +33,7 @@ local State = {
     AimbotPart = "Head",
     AimbotFOV = 150,
     AimbotSmoothing = 0.1, -- 0.1 is smooth, 0 is instant
+    AimbotBind = {kind = "mouse", value = Enum.UserInputType.MouseButton2},
     
     ESP = false,
     ESPColor = Color3.fromRGB(56, 189, 248),
@@ -700,6 +701,113 @@ local function createDropdown(page, text, options, defaultOpt, callback)
         end
     end)
 end
+local function bindToText(bind)
+    if not bind then
+        return "None"
+    end
+    if bind.kind == "mouse" then
+        if bind.value == Enum.UserInputType.MouseButton1 then
+            return "LMB"
+        elseif bind.value == Enum.UserInputType.MouseButton2 then
+            return "RMB"
+        elseif bind.value == Enum.UserInputType.MouseButton3 then
+            return "MMB"
+        end
+        return "Mouse"
+    end
+    if bind.kind == "key" then
+        return tostring(bind.value):gsub("Enum.KeyCode.", "")
+    end
+    return "None"
+end
+local function isBindHeld(bind)
+    if not bind then
+        return false
+    end
+    if bind.kind == "key" then
+        return UserInputService:IsKeyDown(bind.value)
+    end
+    if bind.kind == "mouse" then
+        return UserInputService:IsMouseButtonPressed(bind.value)
+    end
+    return false
+end
+local function createKeybind(page, text, defaultBind, callback)
+    local BindFrame = Instance.new("Frame")
+    BindFrame.Size = UDim2.new(1, -4, 0, 48)
+    BindFrame.BackgroundColor3 = Theme.CardBg
+    BindFrame.BorderSizePixel = 0
+    BindFrame.LayoutOrder = #page:GetChildren()
+    BindFrame.Parent = page
+    createRound(BindFrame, 12)
+    local stroke = createStroke(BindFrame, Theme.Border, 1, 0.25)
+    bindCardHover(BindFrame, stroke)
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.55, 0, 1, 0)
+    Label.Position = UDim2.new(0, 16, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = Theme.TextActive
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Font = Theme.FontMain
+    Label.TextSize = 14
+    Label.Parent = BindFrame
+    local current = defaultBind
+    local listening = false
+    local listenAt = 0
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(0, 118, 0, 28)
+    Button.Position = UDim2.new(1, -132, 0.5, -14)
+    Button.BackgroundColor3 = Theme.Track
+    Button.Text = bindToText(current)
+    Button.TextColor3 = Theme.Accent
+    Button.Font = Theme.FontBold
+    Button.TextSize = 12
+    Button.AutoButtonColor = false
+    Button.Parent = BindFrame
+    createRound(Button, 8)
+    createStroke(Button, Theme.Accent, 1, 0.55)
+    local function setListening(on)
+        listening = on
+        if on then
+            listenAt = tick()
+            Button.Text = "Press key..."
+            tween(Button, {BackgroundColor3 = Color3.fromRGB(14, 32, 44), TextColor3 = Theme.TextActive})
+        else
+            Button.Text = bindToText(current)
+            tween(Button, {BackgroundColor3 = Theme.Track, TextColor3 = Theme.Accent})
+        end
+    end
+    Button.MouseButton1Click:Connect(function()
+        setListening(not listening)
+    end)
+    UserInputService.InputBegan:Connect(function(input)
+        if not listening then
+            return
+        end
+        if tick() - listenAt < 0.18 then
+            return
+        end
+        if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.RightControl then
+            setListening(false)
+            return
+        end
+        local nextBind = nil
+        if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode ~= Enum.KeyCode.Unknown then
+            nextBind = {kind = "key", value = input.KeyCode}
+        elseif input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.MouseButton2
+            or input.UserInputType == Enum.UserInputType.MouseButton3 then
+            nextBind = {kind = "mouse", value = input.UserInputType}
+        end
+        if not nextBind then
+            return
+        end
+        current = nextBind
+        callback(current)
+        setListening(false)
+    end)
+end
 -- ==========================================
 -- TAB SELECTION SYSTEM
 -- ==========================================
@@ -985,8 +1093,11 @@ end)
 -- ==========================================
 local CombatTab = Tabs["Combat"]
 createSection(CombatTab, "Aim")
-createToggle(CombatTab, "Aimbot  ·  hold RMB", State.Aimbot, function(val)
+createToggle(CombatTab, "Aimbot", State.Aimbot, function(val)
     State.Aimbot = val
+end)
+createKeybind(CombatTab, "Hold key", State.AimbotBind, function(bind)
+    State.AimbotBind = bind
 end)
 createDropdown(CombatTab, "Target part", {"Head", "HumanoidRootPart"}, State.AimbotPart, function(val)
     State.AimbotPart = val
@@ -1049,8 +1160,7 @@ RunService.RenderStepped:Connect(function()
             fovCircle.Visible = State.Aimbot and true or false
         end
         if State.Aimbot then
-            -- Only aim when Right Mouse Button is pressed
-            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+            if isBindHeld(State.AimbotBind) then
                 local target = getClosestPlayerToMouse()
                 if target and target.Character and target.Character:FindFirstChild(State.AimbotPart) then
                     local targetPos = target.Character[State.AimbotPart].Position

@@ -17,6 +17,7 @@ local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "vf1"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
 -- Try to parent to CoreGui for safety from game scripts, fallback to PlayerGui
 local successParent, errParent = pcall(function()
     ScreenGui.Parent = coreGui
@@ -34,7 +35,7 @@ local State = {
     AimbotSmoothing = 0.1, -- 0.1 is smooth, 0 is instant
     
     ESP = false,
-    ESPColor = Color3.fromRGB(0, 190, 255),
+    ESPColor = Color3.fromRGB(56, 189, 248),
     
     HitboxExpander = false,
     HitboxSize = 10,
@@ -54,85 +55,268 @@ local ActiveESPHighlights = {}
 -- UTILS & DESIGN SYSTEM
 -- ==========================================
 local Theme = {
-    Background = Color3.fromRGB(15, 15, 18),
-    Sidebar = Color3.fromRGB(10, 10, 12),
-    Accent = Color3.fromRGB(0, 190, 255),
-    AccentSecondary = Color3.fromRGB(0, 120, 255),
-    CardBg = Color3.fromRGB(22, 22, 26),
-    Border = Color3.fromRGB(35, 35, 40),
-    TextActive = Color3.fromRGB(255, 255, 255),
-    TextMuted = Color3.fromRGB(140, 140, 145),
-    FontMain = Enum.Font.GothamMedium,
+    Background = Color3.fromRGB(11, 12, 16),
+    Sidebar = Color3.fromRGB(14, 16, 22),
+    Header = Color3.fromRGB(16, 18, 26),
+    Accent = Color3.fromRGB(56, 189, 248),
+    AccentSoft = Color3.fromRGB(14, 116, 144),
+    AccentSecondary = Color3.fromRGB(99, 102, 241),
+    CardBg = Color3.fromRGB(20, 22, 30),
+    CardHover = Color3.fromRGB(26, 29, 40),
+    Track = Color3.fromRGB(36, 40, 54),
+    ToggleOff = Color3.fromRGB(42, 46, 60),
+    Border = Color3.fromRGB(42, 47, 64),
+    TextActive = Color3.fromRGB(244, 247, 252),
+    TextMuted = Color3.fromRGB(132, 142, 162),
+    Danger = Color3.fromRGB(248, 113, 113),
+    FontMain = Enum.Font.Gotham,
     FontBold = Enum.Font.GothamBold
 }
+local TweenFast = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TweenSnap = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local function tween(obj, props, info)
+    local t = TweenService:Create(obj, info or TweenFast, props)
+    t:Play()
+    return t
+end
 local function createRound(parent, radius)
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, radius)
     corner.Parent = parent
     return corner
 end
-local function createStroke(parent, color, thickness)
+local function createStroke(parent, color, thickness, transparency)
     local stroke = Instance.new("UIStroke")
     stroke.Color = color
-    stroke.Thickness = thickness
+    stroke.Thickness = thickness or 1
+    stroke.Transparency = transparency or 0
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = parent
     return stroke
 end
+local function createGradient(parent, c1, c2, rotation)
+    local g = Instance.new("UIGradient")
+    g.Color = ColorSequence.new(c1, c2)
+    g.Rotation = rotation or 90
+    g.Parent = parent
+    return g
+end
+local function createPadding(parent, l, t, r, b)
+    local p = Instance.new("UIPadding")
+    p.PaddingLeft = UDim.new(0, l or 0)
+    p.PaddingTop = UDim.new(0, t or 0)
+    p.PaddingRight = UDim.new(0, r or 0)
+    p.PaddingBottom = UDim.new(0, b or 0)
+    p.Parent = parent
+    return p
+end
 -- ==========================================
 -- MAIN FRAME CREATION
 -- ==========================================
+local WIN_W, WIN_H = 580, 430
+local Holder = Instance.new("Frame")
+Holder.Name = "WindowHolder"
+Holder.Size = UDim2.new(0, WIN_W, 0, WIN_H)
+Holder.Position = UDim2.new(0.5, -WIN_W / 2, 0.5, -WIN_H / 2)
+Holder.BackgroundTransparency = 1
+Holder.Parent = ScreenGui
+-- Soft drop shadow (sibling so it is not clipped)
+local Shadow = Instance.new("ImageLabel")
+Shadow.Name = "Shadow"
+Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow.Position = UDim2.new(0.5, 0, 0.5, 10)
+Shadow.Size = UDim2.new(1, 80, 1, 80)
+Shadow.BackgroundTransparency = 1
+Shadow.Image = "rbxassetid://6014261993"
+Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+Shadow.ImageTransparency = 0.42
+Shadow.ScaleType = Enum.ScaleType.Slice
+Shadow.SliceCenter = Rect.new(49, 49, 450, 450)
+Shadow.ZIndex = 0
+Shadow.Parent = Holder
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 520, 0, 360)
-MainFrame.Position = UDim2.new(0.5, -260, 0.5, -180)
+MainFrame.Size = UDim2.new(1, 0, 1, 0)
 MainFrame.BackgroundColor3 = Theme.Background
 MainFrame.BorderSizePixel = 0
 MainFrame.Visible = true
-MainFrame.Parent = ScreenGui
-createRound(MainFrame, 12)
-createStroke(MainFrame, Theme.Border, 1.5)
--- Drop shadow / Glow border simulation using UIStroke
-local glowStroke = Instance.new("UIStroke")
-glowStroke.Color = Theme.Accent
-glowStroke.Thickness = 0.5
-glowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-glowStroke.Transparency = 0.5
-glowStroke.Parent = MainFrame
--- Floating Toggle Button (in case they don't have RightControl)
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = Holder
+createRound(MainFrame, 16)
+createStroke(MainFrame, Theme.Border, 1, 0.15)
+local windowScale = Instance.new("UIScale")
+windowScale.Scale = 1
+windowScale.Parent = Holder
+-- Accent hairline at top
+local TopAccent = Instance.new("Frame")
+TopAccent.Name = "TopAccent"
+TopAccent.Size = UDim2.new(1, 0, 0, 2)
+TopAccent.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+TopAccent.BorderSizePixel = 0
+TopAccent.ZIndex = 6
+TopAccent.Parent = MainFrame
+createGradient(TopAccent, Theme.Accent, Theme.AccentSecondary, 0)
+local function setUIOpen(open)
+    if open then
+        Holder.Visible = true
+        MainFrame.Visible = true
+        windowScale.Scale = 0.94
+        tween(windowScale, {Scale = 1}, TweenSnap)
+    else
+        local t = tween(windowScale, {Scale = 0.94}, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In))
+        t.Completed:Connect(function()
+            if windowScale.Scale < 0.97 then
+                Holder.Visible = false
+                windowScale.Scale = 1
+            end
+        end)
+    end
+end
+-- Floating Toggle Button
 local FloatingToggle = Instance.new("TextButton")
 FloatingToggle.Name = "FloatingToggle"
-FloatingToggle.Size = UDim2.new(0, 50, 0, 50)
-FloatingToggle.Position = UDim2.new(0, 20, 0, 20)
+FloatingToggle.Size = UDim2.new(0, 52, 0, 52)
+FloatingToggle.Position = UDim2.new(0, 22, 0.5, -26)
 FloatingToggle.BackgroundColor3 = Theme.Sidebar
-FloatingToggle.Text = "R4L"
-FloatingToggle.TextColor3 = Theme.Accent
-FloatingToggle.Font = Theme.FontBold
-FloatingToggle.TextSize = 14
+FloatingToggle.Text = ""
+FloatingToggle.AutoButtonColor = false
+FloatingToggle.Visible = false
 FloatingToggle.Parent = ScreenGui
-FloatingToggle.Visible = false -- Initially hidden, can be toggled via Hotkey or set active
-createRound(FloatingToggle, 25)
-createStroke(FloatingToggle, Theme.Accent, 1)
+createRound(FloatingToggle, 16)
+createStroke(FloatingToggle, Theme.Accent, 1.2, 0.25)
+local FloatLabel = Instance.new("TextLabel")
+FloatLabel.BackgroundTransparency = 1
+FloatLabel.Size = UDim2.new(1, 0, 1, 0)
+FloatLabel.Text = "VZ"
+FloatLabel.TextColor3 = Theme.Accent
+FloatLabel.Font = Theme.FontBold
+FloatLabel.TextSize = 16
+FloatLabel.Parent = FloatingToggle
 FloatingToggle.MouseButton1Click:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
+    FloatingToggle.Visible = false
+    setUIOpen(true)
 end)
+FloatingToggle.MouseEnter:Connect(function()
+    tween(FloatingToggle, {BackgroundColor3 = Theme.CardHover})
+end)
+FloatingToggle.MouseLeave:Connect(function()
+    tween(FloatingToggle, {BackgroundColor3 = Theme.Sidebar})
+end)
+local function hideWindow()
+    setUIOpen(false)
+    task.delay(0.16, function()
+        if not Holder.Visible then
+            FloatingToggle.Visible = true
+        end
+    end)
+end
 -- Hotkey to toggle UI
 UserInputService.InputBegan:Connect(function(input, processed)
     if not processed and input.KeyCode == Enum.KeyCode.RightControl then
-        MainFrame.Visible = not MainFrame.Visible
+        if Holder.Visible then
+            hideWindow()
+        else
+            FloatingToggle.Visible = false
+            setUIOpen(true)
+        end
     end
 end)
--- Make Main Frame Draggable
+-- ==========================================
+-- HEADER (drag handle)
+-- ==========================================
+local Header = Instance.new("Frame")
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 52)
+Header.BackgroundColor3 = Theme.Header
+Header.BorderSizePixel = 0
+Header.ZIndex = 4
+Header.Parent = MainFrame
+local HeaderCover = Instance.new("Frame")
+HeaderCover.Size = UDim2.new(1, 0, 0, 16)
+HeaderCover.Position = UDim2.new(0, 0, 1, -16)
+HeaderCover.BackgroundColor3 = Theme.Header
+HeaderCover.BorderSizePixel = 0
+HeaderCover.ZIndex = 4
+HeaderCover.Parent = Header
+-- Logo badge
+local Logo = Instance.new("Frame")
+Logo.Name = "Logo"
+Logo.Size = UDim2.new(0, 30, 0, 30)
+Logo.Position = UDim2.new(0, 14, 0.5, -15)
+Logo.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Logo.BorderSizePixel = 0
+Logo.ZIndex = 5
+Logo.Parent = Header
+createRound(Logo, 8)
+createGradient(Logo, Theme.Accent, Theme.AccentSecondary, 135)
+local LogoText = Instance.new("TextLabel")
+LogoText.BackgroundTransparency = 1
+LogoText.Size = UDim2.new(1, 0, 1, 0)
+LogoText.Text = "VZ"
+LogoText.TextColor3 = Color3.fromRGB(8, 10, 16)
+LogoText.Font = Theme.FontBold
+LogoText.TextSize = 11
+LogoText.ZIndex = 6
+LogoText.Parent = Logo
+local TitleCol = Instance.new("Frame")
+TitleCol.BackgroundTransparency = 1
+TitleCol.Position = UDim2.new(0, 52, 0, 8)
+TitleCol.Size = UDim2.new(0, 220, 1, -10)
+TitleCol.ZIndex = 5
+TitleCol.Parent = Header
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Size = UDim2.new(1, 0, 0, 20)
+TitleLabel.Text = "Vf1 > Zaid"
+TitleLabel.TextColor3 = Theme.TextActive
+TitleLabel.Font = Theme.FontBold
+TitleLabel.TextSize = 15
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.ZIndex = 5
+TitleLabel.Parent = TitleCol
+local Subtitle = Instance.new("TextLabel")
+Subtitle.BackgroundTransparency = 1
+Subtitle.Position = UDim2.new(0, 0, 0, 20)
+Subtitle.Size = UDim2.new(1, 0, 0, 16)
+Subtitle.Text = "Right Ctrl  ·  toggle menu"
+Subtitle.TextColor3 = Theme.TextMuted
+Subtitle.Font = Theme.FontMain
+Subtitle.TextSize = 11
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+Subtitle.ZIndex = 5
+Subtitle.Parent = TitleCol
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -42, 0.5, -15)
+CloseBtn.BackgroundColor3 = Theme.CardBg
+CloseBtn.Text = "X"
+CloseBtn.TextColor3 = Theme.TextMuted
+CloseBtn.Font = Theme.FontBold
+CloseBtn.TextSize = 18
+CloseBtn.AutoButtonColor = false
+CloseBtn.ZIndex = 6
+CloseBtn.Parent = Header
+createRound(CloseBtn, 8)
+createStroke(CloseBtn, Theme.Border, 1, 0.35)
+CloseBtn.MouseEnter:Connect(function()
+    tween(CloseBtn, {BackgroundColor3 = Color3.fromRGB(60, 22, 28), TextColor3 = Theme.Danger})
+end)
+CloseBtn.MouseLeave:Connect(function()
+    tween(CloseBtn, {BackgroundColor3 = Theme.CardBg, TextColor3 = Theme.TextMuted})
+end)
+CloseBtn.MouseButton1Click:Connect(hideWindow)
+-- Drag from header only
 local dragging, dragInput, dragStart, startPos
 local function updateDrag(input)
     local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    Holder.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 end
-MainFrame.InputBegan:Connect(function(input)
+Header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
-        startPos = MainFrame.Position
+        startPos = Holder.Position
         input.Changed:Connect(function()
             if input.UserInputState == Enum.UserInputState.End then
                 dragging = false
@@ -140,7 +324,7 @@ MainFrame.InputBegan:Connect(function(input)
         end)
     end
 end)
-MainFrame.InputChanged:Connect(function(input)
+Header.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
@@ -155,62 +339,47 @@ end)
 -- ==========================================
 local Sidebar = Instance.new("Frame")
 Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 140, 1, 0)
+Sidebar.Size = UDim2.new(0, 148, 1, -52)
+Sidebar.Position = UDim2.new(0, 0, 0, 52)
 Sidebar.BackgroundColor3 = Theme.Sidebar
 Sidebar.BorderSizePixel = 0
 Sidebar.Parent = MainFrame
-local sideCorner = Instance.new("UICorner")
-sideCorner.CornerRadius = UDim.new(0, 12)
-sideCorner.Parent = Sidebar
--- Hide right corner of sidebar to blend into Main Frame
-local SidebarCover = Instance.new("Frame")
-SidebarCover.Name = "SidebarCover"
-SidebarCover.Size = UDim2.new(0, 20, 1, 0)
-SidebarCover.Position = UDim2.new(1, -20, 0, 0)
-SidebarCover.BackgroundColor3 = Theme.Sidebar
-SidebarCover.BorderSizePixel = 0
-SidebarCover.ZIndex = 1
-SidebarCover.Parent = Sidebar
--- Title Label
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Name = "TitleLabel"
-TitleLabel.Size = UDim2.new(1, 0, 0, 50)
-TitleLabel.Position = UDim2.new(0, 0, 0, 10)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Vf1>Zaid"
-TitleLabel.TextColor3 = Theme.TextActive
-TitleLabel.Font = Theme.FontBold
-TitleLabel.TextSize = 18
-TitleLabel.ZIndex = 2
-TitleLabel.Parent = Sidebar
--- Separator
-local Sep = Instance.new("Frame")
-Sep.Size = UDim2.new(0.8, 0, 0, 1)
-Sep.Position = UDim2.new(0.1, 0, 0, 55)
-Sep.BackgroundColor3 = Theme.Border
-Sep.BorderSizePixel = 0
-Sep.ZIndex = 2
-Sep.Parent = Sidebar
--- Sidebar Button Container
+local SideLine = Instance.new("Frame")
+SideLine.Size = UDim2.new(0, 1, 1, 0)
+SideLine.Position = UDim2.new(1, -1, 0, 0)
+SideLine.BackgroundColor3 = Theme.Border
+SideLine.BackgroundTransparency = 0.45
+SideLine.BorderSizePixel = 0
+SideLine.Parent = Sidebar
 local TabContainer = Instance.new("Frame")
 TabContainer.Name = "TabContainer"
-TabContainer.Size = UDim2.new(1, 0, 1, -70)
-TabContainer.Position = UDim2.new(0, 0, 0, 70)
+TabContainer.Size = UDim2.new(1, 0, 1, -48)
+TabContainer.Position = UDim2.new(0, 0, 0, 10)
 TabContainer.BackgroundTransparency = 1
-TabContainer.ZIndex = 2
 TabContainer.Parent = Sidebar
+createPadding(TabContainer, 10, 0, 10, 0)
 local TabListLayout = Instance.new("UIListLayout")
 TabListLayout.Parent = TabContainer
 TabListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TabListLayout.Padding = UDim.new(0, 8)
+TabListLayout.Padding = UDim.new(0, 6)
+local SideFooter = Instance.new("TextLabel")
+SideFooter.BackgroundTransparency = 1
+SideFooter.Size = UDim2.new(1, -16, 0, 32)
+SideFooter.Position = UDim2.new(0, 8, 1, -40)
+SideFooter.Text = "v2  ·  UI"
+SideFooter.TextColor3 = Theme.TextMuted
+SideFooter.Font = Theme.FontMain
+SideFooter.TextSize = 11
+SideFooter.TextXAlignment = Enum.TextXAlignment.Left
+SideFooter.Parent = Sidebar
 -- ==========================================
 -- CONTAINER FOR TABS
 -- ==========================================
 local Container = Instance.new("Frame")
 Container.Name = "Container"
-Container.Size = UDim2.new(1, -150, 1, -20)
-Container.Position = UDim2.new(0, 145, 0, 10)
+Container.Size = UDim2.new(1, -160, 1, -68)
+Container.Position = UDim2.new(0, 154, 0, 60)
 Container.BackgroundTransparency = 1
 Container.Parent = MainFrame
 -- Tab pages list
@@ -222,35 +391,74 @@ local function createTabPage(name)
     Page.Size = UDim2.new(1, 0, 1, 0)
     Page.BackgroundTransparency = 1
     Page.BorderSizePixel = 0
-    Page.ScrollBarThickness = 2
+    Page.ScrollBarThickness = 3
     Page.ScrollBarImageColor3 = Theme.Accent
+    Page.ScrollBarImageTransparency = 0.35
     Page.Visible = false
     Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
     Page.CanvasSize = UDim2.new(0, 0, 0, 0)
     Page.CanvasPosition = Vector2.new(0, 0)
+    Page.ScrollingDirection = Enum.ScrollingDirection.Y
     Page.Parent = Container
+    createPadding(Page, 2, 4, 10, 12)
     local listLayout = Instance.new("UIListLayout")
     listLayout.Parent = Page
     listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Padding = UDim.new(0, 10)
+    listLayout.Padding = UDim.new(0, 8)
     Tabs[name] = Page
     return Page
 end
 -- ==========================================
 -- UI CONTROLS CREATION FUNCTIONS
 -- ==========================================
+local function bindCardHover(frame, stroke)
+    frame.Active = true
+    frame.MouseEnter:Connect(function()
+        tween(frame, {BackgroundColor3 = Theme.CardHover})
+        if stroke then tween(stroke, {Color = Color3.fromRGB(70, 80, 110)}) end
+    end)
+    frame.MouseLeave:Connect(function()
+        tween(frame, {BackgroundColor3 = Theme.CardBg})
+        if stroke then tween(stroke, {Color = Theme.Border}) end
+    end)
+end
+local function createSection(page, text)
+    local Section = Instance.new("Frame")
+    Section.Size = UDim2.new(1, -4, 0, 26)
+    Section.BackgroundTransparency = 1
+    Section.LayoutOrder = #page:GetChildren()
+    Section.Parent = page
+    local AccentBar = Instance.new("Frame")
+    AccentBar.Size = UDim2.new(0, 3, 0, 12)
+    AccentBar.Position = UDim2.new(0, 2, 0.5, -6)
+    AccentBar.BackgroundColor3 = Theme.Accent
+    AccentBar.BorderSizePixel = 0
+    AccentBar.Parent = Section
+    createRound(AccentBar, 2)
+    local Label = Instance.new("TextLabel")
+    Label.BackgroundTransparency = 1
+    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.Size = UDim2.new(1, -12, 1, 0)
+    Label.Text = string.upper(text)
+    Label.TextColor3 = Theme.TextMuted
+    Label.Font = Theme.FontBold
+    Label.TextSize = 11
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Section
+end
 local function createToggle(page, text, defaultState, callback)
     local ToggleFrame = Instance.new("Frame")
-    ToggleFrame.Size = UDim2.new(1, -10, 0, 42)
+    ToggleFrame.Size = UDim2.new(1, -4, 0, 48)
     ToggleFrame.BackgroundColor3 = Theme.CardBg
     ToggleFrame.BorderSizePixel = 0
     ToggleFrame.LayoutOrder = #page:GetChildren()
     ToggleFrame.Parent = page
-    createRound(ToggleFrame, 8)
-    createStroke(ToggleFrame, Theme.Border, 1)
+    createRound(ToggleFrame, 12)
+    local stroke = createStroke(ToggleFrame, Theme.Border, 1, 0.25)
+    bindCardHover(ToggleFrame, stroke)
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.7, 0, 1, 0)
-    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.Size = UDim2.new(1, -78, 1, 0)
+    Label.Position = UDim2.new(0, 16, 0, 0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.TextColor3 = Theme.TextActive
@@ -259,43 +467,51 @@ local function createToggle(page, text, defaultState, callback)
     Label.TextSize = 14
     Label.Parent = ToggleFrame
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(0, 44, 0, 22)
-    Button.Position = UDim2.new(1, -56, 0.5, -11)
-    Button.BackgroundColor3 = defaultState and Theme.Accent or Color3.fromRGB(50, 50, 55)
+    Button.Size = UDim2.new(0, 46, 0, 24)
+    Button.Position = UDim2.new(1, -62, 0.5, -12)
+    Button.BackgroundColor3 = defaultState and Theme.Accent or Theme.ToggleOff
     Button.Text = ""
+    Button.AutoButtonColor = false
     Button.Parent = ToggleFrame
-    createRound(Button, 11)
+    createRound(Button, 12)
     local Circle = Instance.new("Frame")
     Circle.Size = UDim2.new(0, 18, 0, 18)
-    Circle.Position = UDim2.new(0, defaultState and 24 or 2, 0.5, -9)
+    Circle.Position = UDim2.new(0, defaultState and 25 or 3, 0.5, -9)
     Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     Circle.BorderSizePixel = 0
     Circle.Parent = Button
     createRound(Circle, 9)
     local active = defaultState
+    local function apply(state, animate)
+        local targetPos = state and UDim2.new(0, 25, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+        local targetColor = state and Theme.Accent or Theme.ToggleOff
+        if animate then
+            tween(Circle, {Position = targetPos})
+            tween(Button, {BackgroundColor3 = targetColor})
+        else
+            Circle.Position = targetPos
+            Button.BackgroundColor3 = targetColor
+        end
+    end
     Button.MouseButton1Click:Connect(function()
         active = not active
-        local targetPos = active and UDim2.new(0, 24, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
-        local targetColor = active and Theme.Accent or Color3.fromRGB(50, 50, 55)
-        
-        TweenService:Create(Circle, TweenInfo.new(0.2), {Position = targetPos}):Play()
-        TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = targetColor}):Play()
-        
+        apply(active, true)
         callback(active)
     end)
 end
 local function createSlider(page, text, min, max, defaultVal, callback)
     local SliderFrame = Instance.new("Frame")
-    SliderFrame.Size = UDim2.new(1, -10, 0, 55)
+    SliderFrame.Size = UDim2.new(1, -4, 0, 64)
     SliderFrame.BackgroundColor3 = Theme.CardBg
     SliderFrame.BorderSizePixel = 0
     SliderFrame.LayoutOrder = #page:GetChildren()
     SliderFrame.Parent = page
-    createRound(SliderFrame, 8)
-    createStroke(SliderFrame, Theme.Border, 1)
+    createRound(SliderFrame, 12)
+    local stroke = createStroke(SliderFrame, Theme.Border, 1, 0.25)
+    bindCardHover(SliderFrame, stroke)
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.6, 0, 0, 25)
-    Label.Position = UDim2.new(0, 12, 0, 5)
+    Label.Size = UDim2.new(0.62, 0, 0, 22)
+    Label.Position = UDim2.new(0, 16, 0, 8)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.TextColor3 = Theme.TextActive
@@ -303,47 +519,55 @@ local function createSlider(page, text, min, max, defaultVal, callback)
     Label.Font = Theme.FontMain
     Label.TextSize = 13
     Label.Parent = SliderFrame
+    local ValueChip = Instance.new("Frame")
+    ValueChip.Size = UDim2.new(0, 52, 0, 22)
+    ValueChip.Position = UDim2.new(1, -68, 0, 8)
+    ValueChip.BackgroundColor3 = Color3.fromRGB(14, 32, 44)
+    ValueChip.BorderSizePixel = 0
+    ValueChip.Parent = SliderFrame
+    createRound(ValueChip, 7)
+    createStroke(ValueChip, Theme.Accent, 1, 0.65)
     local ValueLabel = Instance.new("TextLabel")
-    ValueLabel.Size = UDim2.new(0.3, 0, 0, 25)
-    ValueLabel.Position = UDim2.new(0.7, -12, 0, 5)
+    ValueLabel.Size = UDim2.new(1, 0, 1, 0)
     ValueLabel.BackgroundTransparency = 1
     ValueLabel.Text = tostring(defaultVal)
     ValueLabel.TextColor3 = Theme.Accent
-    ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
     ValueLabel.Font = Theme.FontBold
-    ValueLabel.TextSize = 13
-    ValueLabel.Parent = SliderFrame
+    ValueLabel.TextSize = 12
+    ValueLabel.Parent = ValueChip
     local Track = Instance.new("TextButton")
-    Track.Size = UDim2.new(1, -24, 0, 6)
-    Track.Position = UDim2.new(0, 12, 0, 38)
-    Track.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    Track.Size = UDim2.new(1, -32, 0, 8)
+    Track.Position = UDim2.new(0, 16, 0, 40)
+    Track.BackgroundColor3 = Theme.Track
     Track.BorderSizePixel = 0
     Track.Text = ""
+    Track.AutoButtonColor = false
     Track.Parent = SliderFrame
-    createRound(Track, 3)
+    createRound(Track, 4)
     local Fill = Instance.new("Frame")
-    Fill.Size = UDim2.new((defaultVal - min)/(max - min), 0, 1, 0)
-    Fill.BackgroundColor3 = Theme.Accent
+    Fill.Size = UDim2.new((defaultVal - min) / (max - min), 0, 1, 0)
+    Fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     Fill.BorderSizePixel = 0
     Fill.Parent = Track
-    createRound(Fill, 3)
+    createRound(Fill, 4)
+    createGradient(Fill, Theme.Accent, Theme.AccentSecondary, 0)
     local Knob = Instance.new("Frame")
-    Knob.Size = UDim2.new(0, 12, 0, 12)
-    Knob.Position = UDim2.new((defaultVal - min)/(max - min), -6, 0.5, -6)
+    Knob.Size = UDim2.new(0, 14, 0, 14)
+    Knob.Position = UDim2.new((defaultVal - min) / (max - min), -7, 0.5, -7)
     Knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     Knob.BorderSizePixel = 0
+    Knob.ZIndex = 2
     Knob.Parent = Track
-    createRound(Knob, 6)
+    createRound(Knob, 7)
+    createStroke(Knob, Theme.Accent, 2, 0.15)
     local draggingSlider = false
     local function updateSlider(input)
         local relativeX = input.Position.X - Track.AbsolutePosition.X
         local percentage = math.clamp(relativeX / Track.AbsoluteSize.X, 0, 1)
         local val = math.floor(min + percentage * (max - min))
-        
         ValueLabel.Text = tostring(val)
         Fill.Size = UDim2.new(percentage, 0, 1, 0)
-        Knob.Position = UDim2.new(percentage, -6, 0.5, -6)
-        
+        Knob.Position = UDim2.new(percentage, -7, 0.5, -7)
         callback(val)
     end
     Track.InputBegan:Connect(function(input)
@@ -365,18 +589,19 @@ local function createSlider(page, text, min, max, defaultVal, callback)
 end
 local function createDropdown(page, text, options, defaultOpt, callback)
     local DropdownFrame = Instance.new("Frame")
-    DropdownFrame.Size = UDim2.new(1, -10, 0, 42)
+    DropdownFrame.Size = UDim2.new(1, -4, 0, 48)
     DropdownFrame.BackgroundColor3 = Theme.CardBg
     DropdownFrame.BorderSizePixel = 0
     DropdownFrame.LayoutOrder = #page:GetChildren()
     DropdownFrame.Parent = page
     DropdownFrame.ClipsDescendants = false
-    DropdownFrame.ZIndex = 5
-    createRound(DropdownFrame, 8)
-    createStroke(DropdownFrame, Theme.Border, 1)
+    DropdownFrame.ZIndex = 8
+    createRound(DropdownFrame, 12)
+    local stroke = createStroke(DropdownFrame, Theme.Border, 1, 0.25)
+    bindCardHover(DropdownFrame, stroke)
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(0.5, 0, 1, 0)
-    Label.Position = UDim2.new(0, 12, 0, 0)
+    Label.Size = UDim2.new(0.48, 0, 1, 0)
+    Label.Position = UDim2.new(0, 16, 0, 0)
     Label.BackgroundTransparency = 1
     Label.Text = text
     Label.TextColor3 = Theme.TextActive
@@ -385,26 +610,38 @@ local function createDropdown(page, text, options, defaultOpt, callback)
     Label.TextSize = 14
     Label.Parent = DropdownFrame
     local Button = Instance.new("TextButton")
-    Button.Size = UDim2.new(0, 120, 0, 26)
-    Button.Position = UDim2.new(1, -132, 0.5, -13)
-    Button.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    Button.Size = UDim2.new(0, 138, 0, 28)
+    Button.Position = UDim2.new(1, -152, 0, 10)
+    Button.BackgroundColor3 = Theme.Track
     Button.Text = defaultOpt
     Button.TextColor3 = Theme.TextActive
     Button.Font = Theme.FontMain
     Button.TextSize = 12
+    Button.AutoButtonColor = false
+    Button.ZIndex = 9
     Button.Parent = DropdownFrame
-    createRound(Button, 6)
-    createStroke(Button, Theme.Border, 1)
+    createRound(Button, 8)
+    createStroke(Button, Theme.Border, 1, 0.3)
+    local Chevron = Instance.new("TextLabel")
+    Chevron.BackgroundTransparency = 1
+    Chevron.Size = UDim2.new(0, 16, 1, 0)
+    Chevron.Position = UDim2.new(1, -18, 0, 0)
+    Chevron.Text = "▾"
+    Chevron.TextColor3 = Theme.TextMuted
+    Chevron.Font = Theme.FontBold
+    Chevron.TextSize = 12
+    Chevron.ZIndex = 10
+    Chevron.Parent = Button
     local ListFrame = Instance.new("Frame")
     ListFrame.Size = UDim2.new(1, 0, 0, 0)
-    ListFrame.Position = UDim2.new(0, 0, 1, 4)
-    ListFrame.BackgroundColor3 = Theme.CardBg
+    ListFrame.Position = UDim2.new(0, 0, 1, 6)
+    ListFrame.BackgroundColor3 = Theme.Header
     ListFrame.BorderSizePixel = 0
     ListFrame.Visible = false
-    ListFrame.ZIndex = 10
+    ListFrame.ZIndex = 20
     ListFrame.Parent = Button
-    createRound(ListFrame, 6)
-    createStroke(ListFrame, Theme.Border, 1)
+    createRound(ListFrame, 8)
+    createStroke(ListFrame, Theme.Accent, 1, 0.55)
     local optionLayout = Instance.new("UIListLayout")
     optionLayout.Parent = ListFrame
     optionLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -417,91 +654,138 @@ local function createDropdown(page, text, options, defaultOpt, callback)
         for _, opt in ipairs(options) do
             count = count + 1
             local OptBtn = Instance.new("TextButton")
-            OptBtn.Size = UDim2.new(1, 0, 0, 26)
-            OptBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-            OptBtn.BackgroundTransparency = 1
+            OptBtn.Size = UDim2.new(1, 0, 0, 28)
+            OptBtn.BackgroundColor3 = Color3.fromRGB(36, 42, 58)
+            OptBtn.BackgroundTransparency = (opt == Button.Text) and 0.35 or 1
             OptBtn.BorderSizePixel = 0
-            OptBtn.Text = opt
-            OptBtn.TextColor3 = Theme.TextMuted
+            OptBtn.Text = "  " .. opt
+            OptBtn.TextColor3 = (opt == Button.Text) and Theme.Accent or Theme.TextMuted
             OptBtn.Font = Theme.FontMain
             OptBtn.TextSize = 12
-            OptBtn.ZIndex = 11
+            OptBtn.TextXAlignment = Enum.TextXAlignment.Left
+            OptBtn.AutoButtonColor = false
+            OptBtn.ZIndex = 21
             OptBtn.Parent = ListFrame
             OptBtn.MouseButton1Click:Connect(function()
                 Button.Text = opt
                 open = false
                 ListFrame.Visible = false
-                DropdownFrame.Size = UDim2.new(1, -10, 0, 42)
+                DropdownFrame.Size = UDim2.new(1, -4, 0, 48)
+                Chevron.Text = "▾"
                 callback(opt)
             end)
-            
             OptBtn.MouseEnter:Connect(function()
-                OptBtn.BackgroundTransparency = 0.5
+                OptBtn.BackgroundTransparency = 0.25
                 OptBtn.TextColor3 = Theme.TextActive
             end)
             OptBtn.MouseLeave:Connect(function()
-                OptBtn.BackgroundTransparency = 1
-                OptBtn.TextColor3 = Theme.TextMuted
+                local selected = (opt == Button.Text)
+                OptBtn.BackgroundTransparency = selected and 0.35 or 1
+                OptBtn.TextColor3 = selected and Theme.Accent or Theme.TextMuted
             end)
         end
-        ListFrame.Size = UDim2.new(1, 0, 0, count * 26)
+        ListFrame.Size = UDim2.new(1, 0, 0, count * 28)
     end
     Button.MouseButton1Click:Connect(function()
         open = not open
         if open then
             rebuildOptions()
-            DropdownFrame.Size = UDim2.new(1, -10, 0, 42 + ListFrame.AbsoluteSize.Y + 5)
+            DropdownFrame.Size = UDim2.new(1, -4, 0, 48 + ListFrame.AbsoluteSize.Y + 10)
             ListFrame.Visible = true
+            Chevron.Text = "▴"
         else
             ListFrame.Visible = false
-            DropdownFrame.Size = UDim2.new(1, -10, 0, 42)
+            DropdownFrame.Size = UDim2.new(1, -4, 0, 48)
+            Chevron.Text = "▾"
         end
     end)
 end
 -- ==========================================
 -- TAB SELECTION SYSTEM
 -- ==========================================
+local TabMeta = {
+    Combat = {icon = "C", color = Color3.fromRGB(248, 113, 113)},
+    Visuals = {icon = "V", color = Color3.fromRGB(56, 189, 248)},
+    Movement = {icon = "M", color = Color3.fromRGB(52, 211, 153)}
+}
 local function showTab(name)
     for tabName, page in pairs(Tabs) do
         page.Visible = (tabName == name)
     end
-    for btnName, btn in pairs(TabButtons) do
-        if btnName == name then
-            btn.TextColor3 = Theme.TextActive
-            btn.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-            btn.Indicator.BackgroundColor3 = Theme.Accent
-        else
-            btn.TextColor3 = Theme.TextMuted
-            btn.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-            btn.Indicator.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-        end
+    for btnName, tab in pairs(TabButtons) do
+        local on = (btnName == name)
+        tween(tab.Button, {BackgroundColor3 = on and Theme.CardBg or Theme.Sidebar})
+        tween(tab.Label, {TextColor3 = on and Theme.TextActive or Theme.TextMuted})
+        tween(tab.Indicator, {BackgroundTransparency = on and 0 or 1})
+        tween(tab.IconStroke, {Transparency = on and 0.15 or 0.55})
     end
 end
 local function addTab(name)
     local Page = createTabPage(name)
-    
+    local meta = TabMeta[name] or {icon = string.sub(name, 1, 1), color = Theme.Accent}
     local Button = Instance.new("TextButton")
     Button.Name = name .. "TabBtn"
-    Button.Size = UDim2.new(0.9, 0, 0, 32)
-    Button.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+    Button.Size = UDim2.new(1, 0, 0, 40)
+    Button.BackgroundColor3 = Theme.Sidebar
     Button.BorderSizePixel = 0
-    Button.Text = "  " .. name
-    Button.TextColor3 = Theme.TextMuted
-    Button.Font = Theme.FontMain
-    Button.TextSize = 13
-    Button.TextXAlignment = Enum.TextXAlignment.Left
+    Button.Text = ""
+    Button.AutoButtonColor = false
     Button.ZIndex = 2
     Button.Parent = TabContainer
-    createRound(Button, 6)
+    createRound(Button, 10)
     local Indicator = Instance.new("Frame")
     Indicator.Name = "Indicator"
-    Indicator.Size = UDim2.new(0, 3, 0.6, 0)
-    Indicator.Position = UDim2.new(0, 0, 0.2, 0)
-    Indicator.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+    Indicator.Size = UDim2.new(0, 3, 0, 18)
+    Indicator.Position = UDim2.new(0, 4, 0.5, -9)
+    Indicator.BackgroundColor3 = Theme.Accent
+    Indicator.BackgroundTransparency = 1
     Indicator.BorderSizePixel = 0
     Indicator.Parent = Button
     createRound(Indicator, 2)
-    TabButtons[name] = Button
+    local Icon = Instance.new("Frame")
+    Icon.Size = UDim2.new(0, 22, 0, 22)
+    Icon.Position = UDim2.new(0, 14, 0.5, -11)
+    Icon.BackgroundColor3 = meta.color
+    Icon.BackgroundTransparency = 0.82
+    Icon.BorderSizePixel = 0
+    Icon.Parent = Button
+    createRound(Icon, 6)
+    local IconStroke = createStroke(Icon, meta.color, 1, 0.55)
+    local IconText = Instance.new("TextLabel")
+    IconText.BackgroundTransparency = 1
+    IconText.Size = UDim2.new(1, 0, 1, 0)
+    IconText.Text = meta.icon
+    IconText.TextColor3 = meta.color
+    IconText.Font = Theme.FontBold
+    IconText.TextSize = 11
+    IconText.Parent = Icon
+    local Label = Instance.new("TextLabel")
+    Label.Name = "Label"
+    Label.BackgroundTransparency = 1
+    Label.Position = UDim2.new(0, 42, 0, 0)
+    Label.Size = UDim2.new(1, -48, 1, 0)
+    Label.Text = name
+    Label.TextColor3 = Theme.TextMuted
+    Label.Font = Theme.FontMain
+    Label.TextSize = 13
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Button
+    TabButtons[name] = {
+        Button = Button,
+        Label = Label,
+        Indicator = Indicator,
+        IconStroke = IconStroke
+    }
+    Button.MouseEnter:Connect(function()
+        if not Tabs[name].Visible then
+            tween(Button, {BackgroundColor3 = Theme.CardBg})
+        end
+    end)
+    Button.MouseLeave:Connect(function()
+        if not Tabs[name].Visible then
+            tween(Button, {BackgroundColor3 = Theme.Sidebar})
+        end
+    end)
     Button.MouseButton1Click:Connect(function()
         showTab(name)
     end)
@@ -516,11 +800,11 @@ showTab("Combat")
 -- MOVEMENT FEATURES LOGIC
 -- ==========================================
 local MovementTab = Tabs["Movement"]
--- Custom Speed Toggle and Slider
-createToggle(MovementTab, "Enable WalkSpeed Hack", State.SpeedEnabled, function(val)
+createSection(MovementTab, "Walk")
+createToggle(MovementTab, "WalkSpeed", State.SpeedEnabled, function(val)
     State.SpeedEnabled = val
 end)
-createSlider(MovementTab, "WalkSpeed Value", 16, 200, State.WalkSpeed, function(val)
+createSlider(MovementTab, "Speed", 16, 200, State.WalkSpeed, function(val)
     State.WalkSpeed = val
 end)
 -- WalkSpeed Loop (RenderStepped-based to bypass game resets)
@@ -536,7 +820,7 @@ speedConnection = RunService.RenderStepped:Connect(function()
         end
     end)
 end)
--- Fly Toggle and Slider
+createSection(MovementTab, "Flight")
 local flyVelocity = nil
 local flyGyro = nil
 local flyConnection = nil
@@ -611,7 +895,7 @@ local function startFlying()
         end)
     end)
 end
-createToggle(MovementTab, "Enable Fly", State.Fly, function(val)
+createToggle(MovementTab, "Fly", State.Fly, function(val)
     State.Fly = val
     if val then
         startFlying()
@@ -619,7 +903,7 @@ createToggle(MovementTab, "Enable Fly", State.Fly, function(val)
         stopFlying()
     end
 end)
-createSlider(MovementTab, "Fly Speed Value", 10, 300, State.FlySpeed, function(val)
+createSlider(MovementTab, "Fly Speed", 10, 300, State.FlySpeed, function(val)
     State.FlySpeed = val
 end)
 -- Re-run flying when player character respawns
@@ -683,7 +967,8 @@ local function updateESPState()
         table.clear(ActiveESPHighlights)
     end
 end
-createToggle(VisualsTab, "Enable Player Highlight ESP", State.ESP, function(val)
+createSection(VisualsTab, "Players")
+createToggle(VisualsTab, "Player Highlight ESP", State.ESP, function(val)
     State.ESP = val
     updateESPState()
 end)
@@ -699,17 +984,17 @@ end)
 -- COMBAT FEATURES LOGIC (AIMBOT & HITBOX)
 -- ==========================================
 local CombatTab = Tabs["Combat"]
--- Aimbot UI Controls
-createToggle(CombatTab, "Enable Aimbot (Hold Right Mouse)", State.Aimbot, function(val)
+createSection(CombatTab, "Aim")
+createToggle(CombatTab, "Aimbot  ·  hold RMB", State.Aimbot, function(val)
     State.Aimbot = val
 end)
-createDropdown(CombatTab, "Aimbot Target Part", {"Head", "HumanoidRootPart"}, State.AimbotPart, function(val)
+createDropdown(CombatTab, "Target part", {"Head", "HumanoidRootPart"}, State.AimbotPart, function(val)
     State.AimbotPart = val
 end)
-createSlider(CombatTab, "Aimbot FOV Radius", 50, 400, State.AimbotFOV, function(val)
+createSlider(CombatTab, "FOV radius", 50, 400, State.AimbotFOV, function(val)
     State.AimbotFOV = val
 end)
-createSlider(CombatTab, "Aimbot Smoothness (%)", 0, 95, math.floor(State.AimbotSmoothing * 100), function(val)
+createSlider(CombatTab, "Smoothness", 0, 95, math.floor(State.AimbotSmoothing * 100), function(val)
     State.AimbotSmoothing = val / 100
 end)
 -- Drawing FOV circle on screen if supported
@@ -780,8 +1065,8 @@ RunService.RenderStepped:Connect(function()
         end
     end)
 end)
--- Hitbox Expander Control
-createToggle(CombatTab, "Enable Hitbox Expander", State.HitboxExpander, function(val)
+createSection(CombatTab, "Hitbox")
+createToggle(CombatTab, "Hitbox expander", State.HitboxExpander, function(val)
     State.HitboxExpander = val
     if not val then
         -- Restore original hitboxes when disabled
@@ -800,7 +1085,7 @@ createToggle(CombatTab, "Enable Hitbox Expander", State.HitboxExpander, function
         table.clear(OriginalHitboxData)
     end
 end)
-createSlider(CombatTab, "Hitbox Size", 2, 30, State.HitboxSize, function(val)
+createSlider(CombatTab, "Hitbox size", 2, 30, State.HitboxSize, function(val)
     State.HitboxSize = val
 end)
 -- Loop to continuously apply Hitbox expansion
@@ -840,8 +1125,8 @@ end)
 -- Notify client UI loaded
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "Vf1>Zaid",
-        Text = "Successfully Loaded! Press Right Control to toggle UI.",
+        Title = "Vf1 > Zaid",
+        Text = "Loaded. Right Control to toggle UI.",
         Duration = 5
     })
 end)

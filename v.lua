@@ -33,7 +33,7 @@ local State = {
     AimbotPart = "Head",
     AimbotFOV = 150,
     AimbotSmoothing = 0.1, -- 0.1 is smooth, 0 is instant
-    AimbotBind = {kind = "mouse", value = Enum.UserInputType.MouseButton2},
+    AimbotBind = nil,
     
     ESP = false,
     ESPColor = Color3.fromRGB(56, 189, 248),
@@ -48,6 +48,14 @@ local State = {
     FlySpeed = 50
 }
 _G.R4LState = State
+local Unloaded = false
+if not table.clear then
+    function table.clear(t)
+        for k in pairs(t) do
+            t[k] = nil
+        end
+    end
+end
 -- Original player hitbox states
 local OriginalHitboxData = {}
 -- Active ESP highlights
@@ -213,6 +221,7 @@ local function hideWindow()
 end
 -- Hotkey to toggle UI
 UserInputService.InputBegan:Connect(function(input, processed)
+    if Unloaded then return end
     if not processed and input.KeyCode == Enum.KeyCode.RightControl then
         if Holder.Visible then
             hideWindow()
@@ -446,6 +455,49 @@ local function createSection(page, text)
     Label.TextSize = 11
     Label.TextXAlignment = Enum.TextXAlignment.Left
     Label.Parent = Section
+end
+local function createButton(page, text, hint, callback)
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1, -4, 0, 58)
+    Btn.BackgroundColor3 = Color3.fromRGB(42, 18, 24)
+    Btn.BorderSizePixel = 0
+    Btn.Text = ""
+    Btn.AutoButtonColor = false
+    Btn.LayoutOrder = #page:GetChildren()
+    Btn.Parent = page
+    createRound(Btn, 12)
+    local stroke = createStroke(Btn, Theme.Danger, 1, 0.45)
+    local Title = Instance.new("TextLabel")
+    Title.BackgroundTransparency = 1
+    Title.Position = UDim2.new(0, 16, 0, 8)
+    Title.Size = UDim2.new(1, -32, 0, 22)
+    Title.Text = text
+    Title.TextColor3 = Theme.Danger
+    Title.Font = Theme.FontBold
+    Title.TextSize = 15
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = Btn
+    local Hint = Instance.new("TextLabel")
+    Hint.BackgroundTransparency = 1
+    Hint.Position = UDim2.new(0, 16, 0, 30)
+    Hint.Size = UDim2.new(1, -32, 0, 18)
+    Hint.Text = hint
+    Hint.TextColor3 = Theme.TextMuted
+    Hint.Font = Theme.FontMain
+    Hint.TextSize = 12
+    Hint.TextXAlignment = Enum.TextXAlignment.Left
+    Hint.Parent = Btn
+    Btn.MouseEnter:Connect(function()
+        tween(Btn, {BackgroundColor3 = Color3.fromRGB(72, 22, 30)})
+        tween(stroke, {Transparency = 0.15})
+    end)
+    Btn.MouseLeave:Connect(function()
+        tween(Btn, {BackgroundColor3 = Color3.fromRGB(42, 18, 24)})
+        tween(stroke, {Transparency = 0.45})
+    end)
+    Btn.MouseButton1Click:Connect(function()
+        callback()
+    end)
 end
 local function createToggle(page, text, defaultState, callback)
     local ToggleFrame = Instance.new("Frame")
@@ -701,34 +753,117 @@ local function createDropdown(page, text, options, defaultOpt, callback)
         end
     end)
 end
+local MouseLabels = {
+    MouseButton1 = "LMB",
+    MouseButton2 = "RMB",
+    MouseButton3 = "MMB",
+    MouseButton4 = "Mouse4",
+    MouseButton5 = "Mouse5"
+}
+local MouseButtonTypes = {
+    Enum.UserInputType.MouseButton1,
+    Enum.UserInputType.MouseButton2,
+    Enum.UserInputType.MouseButton3
+}
+pcall(function()
+    for _, item in ipairs(Enum.UserInputType:GetEnumItems()) do
+        if string.sub(item.Name, 1, 11) == "MouseButton" then
+            local exists = false
+            for _, known in ipairs(MouseButtonTypes) do
+                if known == item then
+                    exists = true
+                    break
+                end
+            end
+            if not exists then
+                table.insert(MouseButtonTypes, item)
+            end
+        end
+    end
+end)
+local function mouseTypeName(inputType)
+    if type(inputType) == "string" then
+        return inputType
+    end
+    local ok, name = pcall(function()
+        return inputType.Name
+    end)
+    if ok and type(name) == "string" then
+        return name
+    end
+    return tostring(inputType)
+end
+local function isMouseButtonType(inputType)
+    local name = mouseTypeName(inputType)
+    return string.sub(name, 1, 11) == "MouseButton"
+end
 local function bindToText(bind)
     if not bind then
         return "None"
     end
     if bind.kind == "mouse" then
-        if bind.value == Enum.UserInputType.MouseButton1 then
-            return "LMB"
-        elseif bind.value == Enum.UserInputType.MouseButton2 then
-            return "RMB"
-        elseif bind.value == Enum.UserInputType.MouseButton3 then
-            return "MMB"
-        end
-        return "Mouse"
+        local name = mouseTypeName(bind.value)
+        return MouseLabels[name] or name
     end
     if bind.kind == "key" then
         return tostring(bind.value):gsub("Enum.KeyCode.", "")
     end
     return "None"
 end
+local function isMouseButtonHeld(inputType)
+    local want = mouseTypeName(inputType)
+    if type(inputType) ~= "string" then
+        local okPressed, pressed = pcall(function()
+            return UserInputService:IsMouseButtonPressed(inputType)
+        end)
+        if okPressed and pressed then
+            return true
+        end
+    end
+    local okList, list = pcall(function()
+        return UserInputService:GetMouseButtonsPressed()
+    end)
+    if okList and list then
+        for _, obj in ipairs(list) do
+            if mouseTypeName(obj.UserInputType) == want then
+                return true
+            end
+        end
+    end
+    return false
+end
+local function getHeldMouseTypes()
+    local held = {}
+    local okList, list = pcall(function()
+        return UserInputService:GetMouseButtonsPressed()
+    end)
+    if okList and list then
+        for _, obj in ipairs(list) do
+            local t = obj.UserInputType
+            if isMouseButtonType(t) then
+                held[mouseTypeName(t)] = t
+            end
+        end
+    end
+    for _, inputType in ipairs(MouseButtonTypes) do
+        if isMouseButtonHeld(inputType) then
+            held[mouseTypeName(inputType)] = inputType
+        end
+    end
+    return held
+end
 local function isBindHeld(bind)
     if not bind then
         return false
     end
     if bind.kind == "key" then
-        return UserInputService:IsKeyDown(bind.value)
+        local ok, down = pcall(function()
+            return UserInputService:IsKeyDown(bind.value)
+        end)
+        return ok and down or false
     end
     if bind.kind == "mouse" then
-        return UserInputService:IsMouseButtonPressed(bind.value)
+        return isMouseButtonHeld(bind.value)
     end
     return false
 end
@@ -755,6 +890,7 @@ local function createKeybind(page, text, defaultBind, callback)
     local current = defaultBind
     local listening = false
     local listenAt = 0
+    local ignoredMouse = {}
     local Button = Instance.new("TextButton")
     Button.Size = UDim2.new(0, 118, 0, 28)
     Button.Position = UDim2.new(1, -132, 0.5, -14)
@@ -767,10 +903,21 @@ local function createKeybind(page, text, defaultBind, callback)
     Button.Parent = BindFrame
     createRound(Button, 8)
     createStroke(Button, Theme.Accent, 1, 0.55)
+    local function applyBind(nextBind)
+        if not nextBind then
+            return
+        end
+        current = nextBind
+        callback(current)
+        listening = false
+        Button.Text = bindToText(current)
+        tween(Button, {BackgroundColor3 = Theme.Track, TextColor3 = Theme.Accent})
+    end
     local function setListening(on)
         listening = on
         if on then
             listenAt = tick()
+            ignoredMouse = getHeldMouseTypes()
             Button.Text = "Press key..."
             tween(Button, {BackgroundColor3 = Color3.fromRGB(14, 32, 44), TextColor3 = Theme.TextActive})
         else
@@ -785,7 +932,7 @@ local function createKeybind(page, text, defaultBind, callback)
         if not listening then
             return
         end
-        if tick() - listenAt < 0.18 then
+        if tick() - listenAt < 0.12 then
             return
         end
         if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.RightControl then
@@ -795,17 +942,32 @@ local function createKeybind(page, text, defaultBind, callback)
         local nextBind = nil
         if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode ~= Enum.KeyCode.Unknown then
             nextBind = {kind = "key", value = input.KeyCode}
-        elseif input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.MouseButton2
-            or input.UserInputType == Enum.UserInputType.MouseButton3 then
+        elseif isMouseButtonType(input.UserInputType) then
             nextBind = {kind = "mouse", value = input.UserInputType}
         end
-        if not nextBind then
+        applyBind(nextBind)
+    end)
+    RunService.Heartbeat:Connect(function()
+        if Unloaded or not listening then
             return
         end
-        current = nextBind
-        callback(current)
-        setListening(false)
+        if tick() - listenAt < 0.12 then
+            ignoredMouse = getHeldMouseTypes()
+            return
+        end
+        local held = getHeldMouseTypes()
+        for name in pairs(ignoredMouse) do
+            if not held[name] then
+                ignoredMouse[name] = nil
+            end
+        end
+        for _, inputType in pairs(held) do
+            local name = mouseTypeName(inputType)
+            if not ignoredMouse[name] then
+                applyBind({kind = "mouse", value = inputType})
+                return
+            end
+        end
     end)
 end
 -- ==========================================
@@ -814,7 +976,8 @@ end
 local TabMeta = {
     Combat = {icon = "C", color = Color3.fromRGB(248, 113, 113)},
     Visuals = {icon = "V", color = Color3.fromRGB(56, 189, 248)},
-    Movement = {icon = "M", color = Color3.fromRGB(52, 211, 153)}
+    Movement = {icon = "M", color = Color3.fromRGB(52, 211, 153)},
+    Settings = {icon = "S", color = Color3.fromRGB(167, 139, 250)}
 }
 local function showTab(name)
     for tabName, page in pairs(Tabs) do
@@ -902,6 +1065,7 @@ end
 addTab("Combat")
 addTab("Visuals")
 addTab("Movement")
+addTab("Settings")
 -- Default to Combat
 showTab("Combat")
 -- ==========================================
@@ -919,7 +1083,7 @@ end)
 local speedConnection
 speedConnection = RunService.RenderStepped:Connect(function()
     pcall(function()
-        if not ScreenGui.Parent then
+        if Unloaded or not ScreenGui.Parent then
             if speedConnection then speedConnection:Disconnect() end
             return
         end
@@ -1017,6 +1181,7 @@ end)
 -- Re-run flying when player character respawns
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
+    if Unloaded then return end
     if State.Fly then
         startFlying()
     end
@@ -1123,12 +1288,19 @@ end)
 if drawingSuccess then
     fovCircle = fovResult
 end
-local function getClosestPlayerToMouse()
+local function getScreenCenter()
+    local cam = workspace.CurrentCamera
+    if not cam then
+        return Vector2.new(0, 0)
+    end
+    local vs = cam.ViewportSize
+    return Vector2.new(vs.X / 2, vs.Y / 2)
+end
+local function getClosestPlayerToCenter()
     local targetPlr = nil
     local shortestDist = math.huge
     local camera = workspace.CurrentCamera
-    local mouse = LocalPlayer:GetMouse()
-    local mousePos = Vector2.new(mouse.X, mouse.Y)
+    local center = getScreenCenter()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild(State.AimbotPart) and plr.Character:FindFirstChild("Humanoid") then
             if plr.Character.Humanoid.Health > 0 then
@@ -1136,7 +1308,7 @@ local function getClosestPlayerToMouse()
                 local screenPos, onScreen = camera:WorldToViewportPoint(part.Position)
                 
                 if onScreen then
-                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+                    local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
                     if dist < shortestDist and dist <= State.AimbotFOV then
                         shortestDist = dist
                         targetPlr = plr
@@ -1148,29 +1320,31 @@ local function getClosestPlayerToMouse()
     return targetPlr
 end
 -- Aimbot RenderStepped Connection
-RunService.RenderStepped:Connect(function()
+local aimbotConnection
+aimbotConnection = RunService.RenderStepped:Connect(function()
     pcall(function()
+        if Unloaded then
+            if aimbotConnection then aimbotConnection:Disconnect() end
+            return
+        end
         local camera = workspace.CurrentCamera
-        local mouse = LocalPlayer:GetMouse()
         
-        -- Update FOV circle
+        -- Update FOV circle — locked to screen center
         if fovCircle then
-            fovCircle.Position = Vector2.new(mouse.X, mouse.Y)
+            fovCircle.Position = getScreenCenter()
             fovCircle.Radius = State.AimbotFOV
             fovCircle.Visible = State.Aimbot and true or false
         end
-        if State.Aimbot then
-            if isBindHeld(State.AimbotBind) then
-                local target = getClosestPlayerToMouse()
-                if target and target.Character and target.Character:FindFirstChild(State.AimbotPart) then
-                    local targetPos = target.Character[State.AimbotPart].Position
-                    local currentLook = camera.CFrame
-                    local targetCFrame = CFrame.new(currentLook.Position, targetPos)
-                    
-                    -- Smooth lerping: 1 - Smoothing (so 0 smoothing is instant, 0.9 is very slow/smooth)
-                    local lerpFactor = 1 - State.AimbotSmoothing
-                    camera.CFrame = currentLook:Lerp(targetCFrame, math.clamp(lerpFactor, 0.01, 1))
-                end
+        if State.Aimbot and isBindHeld(State.AimbotBind) then
+            local target = getClosestPlayerToCenter()
+            if target and target.Character and target.Character:FindFirstChild(State.AimbotPart) then
+                local targetPos = target.Character[State.AimbotPart].Position
+                local currentLook = camera.CFrame
+                local targetCFrame = CFrame.new(currentLook.Position, targetPos)
+                
+                -- Smooth lerping: 1 - Smoothing (so 0 smoothing is instant, 0.9 is very slow/smooth)
+                local lerpFactor = 1 - State.AimbotSmoothing
+                camera.CFrame = currentLook:Lerp(targetCFrame, math.clamp(lerpFactor, 0.01, 1))
             end
         end
     end)
@@ -1202,7 +1376,7 @@ end)
 task.spawn(function()
     while true do
         task.wait(1)
-        if not ScreenGui.Parent then break end
+        if Unloaded or not ScreenGui.Parent then break end
         pcall(function()
             if State.HitboxExpander then
                 for _, plr in ipairs(Players:GetPlayers()) do
@@ -1232,6 +1406,63 @@ end)
 Players.PlayerRemoving:Connect(function(plr)
     OriginalHitboxData[plr] = nil
 end)
+-- ==========================================
+-- SETTINGS
+-- ==========================================
+local function unloadAll()
+    if Unloaded then
+        return
+    end
+    Unloaded = true
+    State.Aimbot = false
+    State.ESP = false
+    State.HitboxExpander = false
+    State.SpeedEnabled = false
+    State.Fly = false
+    pcall(stopFlying)
+    for plr, original in pairs(OriginalHitboxData) do
+        pcall(function()
+            if plr and plr.Character then
+                local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.Size = original.Size
+                    hrp.Transparency = original.Transparency
+                    hrp.CanCollide = original.CanCollide
+                end
+            end
+        end)
+    end
+    table.clear(OriginalHitboxData)
+    for _, hl in pairs(ActiveESPHighlights) do
+        pcall(function() hl:Destroy() end)
+    end
+    table.clear(ActiveESPHighlights)
+    if fovCircle then
+        pcall(function()
+            fovCircle.Visible = false
+            fovCircle:Remove()
+        end)
+        pcall(function()
+            fovCircle:Destroy()
+        end)
+        fovCircle = nil
+    end
+    if speedConnection then
+        speedConnection:Disconnect()
+        speedConnection = nil
+    end
+    if aimbotConnection then
+        aimbotConnection:Disconnect()
+        aimbotConnection = nil
+    end
+    _G.R4LState = nil
+    if ScreenGui then
+        ScreenGui:Destroy()
+    end
+end
+local SettingsTab = Tabs["Settings"]
+createSection(SettingsTab, "Session")
+createButton(SettingsTab, "End", "Unload menu and stop every feature", unloadAll)
 -- Notify client UI loaded
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {

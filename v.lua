@@ -1,4 +1,4 @@
--- R4L HUB - Modern Roblox Utility Script
+-- Vf1>Zaid - Modern Roblox Utility Script
 -- Features: ESP, Aimbot, Hitbox Expander, WalkSpeed, Fly, Custom Modern UI
 -- Compatible with standard Luau environments
 local Players = game:GetService("Players")
@@ -8,7 +8,7 @@ local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 -- Destroy existing UI if running to allow hot-reloading
 local coreGui = game:GetService("CoreGui")
-local oldGui = coreGui:FindFirstChild("R4LHubGui") or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("R4LHubGui"))
+local oldGui = coreGui:FindFirstChild("vf1") or (LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("vf1"))
 if oldGui then
     oldGui:Destroy()
 end
@@ -177,7 +177,7 @@ TitleLabel.Name = "TitleLabel"
 TitleLabel.Size = UDim2.new(1, 0, 0, 50)
 TitleLabel.Position = UDim2.new(0, 0, 0, 10)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "R4L HUB"
+TitleLabel.Text = "Vf1>Zaid"
 TitleLabel.TextColor3 = Theme.TextActive
 TitleLabel.Font = Theme.FontBold
 TitleLabel.TextSize = 18
@@ -840,7 +840,7 @@ end)
 -- Notify client UI loaded
 pcall(function()
     game:GetService("StarterGui"):SetCore("SendNotification", {
-        Title = "R4L HUB",
+        Title = "Vf1>Zaid",
         Text = "Successfully Loaded! Press Right Control to toggle UI.",
         Duration = 5
     })

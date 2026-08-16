@@ -14,7 +14,7 @@ if oldGui then
 end
 -- Create ScreenGui
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "R4LHubGui"
+ScreenGui.Name = "vf1"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 -- Try to parent to CoreGui for safety from game scripts, fallback to PlayerGui
